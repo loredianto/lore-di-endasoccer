@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "style": "original-retro-16bit-pixel-art",
+  "palette": {
+    "night": "#07131B",
+    "navy": "#11284B",
+    "asphalt": "#34414A",
+    "concrete": "#56616A",
+    "ivory": "#FFF4D6",
+    "orange": "#FF7A18",
+    "coral": "#D64045",
+    "teal": "#20C4C7"
+  },
+  "assets": {
+    "ball.png": {
+      "width": 128,
+      "height": 128,
+      "role": "interactive juggling ball",
+      "alpha": true,
+      "anchor": { "x": 0.5, "y": 0.5 }
+    },
+    "player-idle.png": {
+      "width": 256,
+      "height": 256,
+      "role": "crouched idle player",
+      "alpha": true,
+      "anchor": { "x": 0.5, "y": 1 }
+    },
+    "player-kick.png": {
+      "width": 256,
+      "height": 256,
+      "role": "short upward juggling pose",
+      "alpha": true,
+      "anchor": { "x": 0.5, "y": 1 }
+    },
+    "background.png": {
+      "width": 1920,
+      "height": 1080,
+      "role": "responsive gameplay environment",
+      "alpha": false,
+      "fit": "cover",
+      "focalPoint": { "x": 0.5, "y": 0.5 }
+    },
+    "score-panel.png": {
+      "width": 512,
+      "height": 192,
+      "role": "empty score HUD frame",
+      "alpha": true,
+      "anchor": { "x": 0.5, "y": 0 }
+    },
+    "pointer.png": {
+      "width": 32,
+      "height": 36,
+      "role": "desktop pixel-art cursor",
+      "alpha": true,
+      "hotspot": { "x": 2, "y": 2 }
+    }
+  }
+}

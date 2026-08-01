@@ -1,0 +1,29 @@
+/* The custom cursor is limited to precise mouse and trackpad input. */
+@media (hover: hover) and (pointer: fine) {
+  html,
+  body,
+  body * {
+    cursor: url("assets/sprites/pointer.png") 2 2, auto;
+  }
+
+  :where(
+      a,
+      button,
+      input,
+      select,
+      textarea,
+      summary,
+      label[for],
+      [role="button"],
+      #game-canvas,
+      #game-overlay,
+      #overlay-action
+    ) {
+    cursor: url("assets/sprites/pointer.png") 2 2, pointer;
+  }
+
+  :where(button, input, select, textarea)[disabled],
+  [aria-disabled="true"] {
+    cursor: url("assets/sprites/pointer.png") 2 2, not-allowed;
+  }
+}

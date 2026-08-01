@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#171421" />
+    <meta
+      name="description"
+      content="Enda Soccer, a small free browser juggling game."
+    />
+    <title>Enda Soccer</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="cursor.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="game-card" aria-labelledby="game-title">
+        <header class="game-header">
+          <div>
+            <p class="eyebrow">Browser game</p>
+            <h1 id="game-title">Enda Soccer</h1>
+          </div>
+
+          <div class="toolbar" aria-label="Game controls">
+            <button id="restart-button" class="icon-button" type="button" title="Restart">
+              <span aria-hidden="true">↻</span>
+              <span class="button-label">Restart</span>
+            </button>
+            <button
+              id="mute-button"
+              class="icon-button"
+              type="button"
+              aria-pressed="false"
+              title="Mute music"
+            >
+              <span id="mute-icon" aria-hidden="true">♪</span>
+              <span id="mute-label" class="button-label">Audio on</span>
+            </button>
+          </div>
+        </header>
+
+        <div id="game-stage" class="game-stage">
+          <canvas
+            id="game-canvas"
+            width="960"
+            height="600"
+            aria-label="Game area. Press when the ball crosses the timing zone."
+          ></canvas>
+
+          <div id="game-overlay" class="game-overlay" aria-hidden="false">
+            <div class="overlay-card">
+              <p id="overlay-kicker" class="overlay-kicker">Goal: 100</p>
+              <h2 id="overlay-title">Keep the ball in the air</h2>
+              <p id="overlay-copy">Press to start, then press when the ball enters the zone.</p>
+              <button id="overlay-action" class="primary-button" type="button" hidden>
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <footer class="game-footer">
+          <p><span class="desktop-only">Mouse:</span> left-click at the right time</p>
+          <p><span class="desktop-only">Mobile:</span> tap the screen at the right time</p>
+          <p id="difficulty-label">Difficulty: loading…</p>
+        </footer>
+
+        <div class="sr-only" aria-live="polite" aria-atomic="true">
+          <p id="score-announcement">Score 0.</p>
+          <p id="state-announcement">Game ready.</p>
+        </div>
+      </section>
+    </main>
+
+    <noscript>JavaScript must be enabled in your browser to play.</noscript>
+    <script type="module" src="src/game.js"></script>
+  </body>
+</html>
