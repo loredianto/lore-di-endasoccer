@@ -61,7 +61,7 @@ const SHARED = {
   },
 
   audio: {
-    musicSrc: "Endacopia OST - Soccer Ball [Extended Version].mp3",
+    musicSrc: "assets/audio/Endacopia OST - Soccer Ball [Extended Version].mp3",
     musicStartScore: 7,
     musicVolume: 0.38,
     musicFadeInMs: 1800,

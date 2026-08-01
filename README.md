@@ -122,8 +122,11 @@ endasoccer/
 ├── styles.css
 ├── README.md
 ├── server.mjs
-├── Endacopia OST - Soccer Ball [Extended Version].mp3
 ├── assets/
+│   ├── audio/
+│   │   └── Endacopia OST - Soccer Ball [Extended Version].mp3
+│   ├── images/
+│   │   └── Immagine 2026-08-01 224033.png
 │   └── sprites/
 │       └── ...
 └── src/
@@ -131,43 +134,13 @@ endasoccer/
     └── game.js
 ```
 
-## Free deployment
-
-The project is a static website. No build step is required: the repository root
-is the output directory.
-
-### Cloudflare Pages
-
-1. Create a new Pages project and connect the Git repository, or use direct
-   upload.
-2. If prompted, choose a static project with no framework.
-3. Leave the build command empty.
-4. Set the output directory to `.` (the repository root).
-5. Deploy and use the free `pages.dev` subdomain.
-
-### Vercel
-
-1. Import the repository as a new project.
-2. Select `Other` as the framework preset.
-3. Do not set a build command.
-4. Use `.` as the output/root directory and deploy to the `vercel.app`
-   subdomain.
-
-### itch.io
-
-1. Add `index.html`, `styles.css`, `src/`, `assets/`, and any distributable
-   audio to a ZIP file, keeping `index.html` at the root of the archive.
-2. Create an HTML5 project and upload the ZIP.
-3. Select the option to run the game in the browser and use a portrait viewport
-   with a 5:8 ratio; `600 × 960` is the ideal reference size.
-
 ## Music, assets, and tribute notice
 
-The file `Endacopia OST - Soccer Ball [Extended Version].mp3` was supplied by
-the user and is only referenced by the code. **Do not publish or redistribute
-it without explicit permission from the copyright owner or a license that
-allows it.** Before distributing the game, replace it with original or licensed
-music, or obtain the necessary authorization.
+The file `assets/audio/Endacopia OST - Soccer Ball [Extended Version].mp3` was
+supplied by the user and is only referenced by the code. **Do not publish or
+redistribute it without explicit permission from the copyright owner or a
+license that allows it.** Before distributing the game, replace it with
+original or licensed music, or obtain the necessary authorization.
 
 Likewise, use only original or properly licensed sprites, names, and interface
 elements. A mechanic inspired by another work may be described as an unofficial
