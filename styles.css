@@ -140,6 +140,11 @@ h1 {
   box-shadow: 0 14px 38px rgba(4, 3, 10, 0.82), inset 0 0 0 2px #332b46;
   contain: layout paint;
   isolation: isolate;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #game-canvas {
@@ -161,6 +166,7 @@ h1 {
   padding: clamp(8px, 3vw, 16px);
   pointer-events: none;
   place-items: start center;
+  touch-action: none;
 }
 
 .overlay-card {

@@ -63,9 +63,9 @@ npx serve .
 - A successful timed kick immediately plays `assets/audio/kick.mp3`.
 
 The Canvas uses Pointer Events to handle mouse and touch through one input
-system. Only the game area sets `touch-action: none`, preventing accidental
-zooming or scrolling during play. Buttons and the rest of the page keep normal
-browser behavior and touch targets of at least 44 px.
+system. The entire game stage sets `touch-action: none`, preventing accidental
+scrolling or double-tap zoom during rapid kicks. The mobile viewport disables
+page scaling, while buttons retain touch targets of at least 44 px.
 
 ## Portrait and smartphone layout
 

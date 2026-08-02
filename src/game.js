@@ -51,6 +51,12 @@ class YouAreTheSoccerBallGame {
     this.kickPromptFadeStartedAt = null;
     this.muted = CONFIG.audio.mutedByDefault;
     this.audioContext = null;
+    this.musicSourceNode = null;
+    this.musicGainNode = null;
+    this.kickSourceNode = null;
+    this.kickGainNode = null;
+    this.pageSuspended = document.hidden;
+    this.resumeMusicAfterPageShow = false;
 
     this.music = new Audio(CONFIG.audio.musicSrc);
     this.music.loop = CONFIG.audio.loopMusic;
@@ -67,6 +73,10 @@ class YouAreTheSoccerBallGame {
     this.handlePointerDown = this.handlePointerDown.bind(this);
     this.handleRetryPointerDown = this.handleRetryPointerDown.bind(this);
     this.handleAudioGesture = this.handleAudioGesture.bind(this);
+    this.handleCanvasKeyDown = this.handleCanvasKeyDown.bind(this);
+    this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
+    this.handlePageHide = this.handlePageHide.bind(this);
+    this.handlePageShow = this.handlePageShow.bind(this);
     this.resizeCanvas = this.resizeCanvas.bind(this);
   }
 
@@ -86,6 +96,7 @@ class YouAreTheSoccerBallGame {
     });
     document.addEventListener("keydown", this.handleAudioGesture, { capture: true });
     this.canvas.addEventListener("pointerdown", this.handlePointerDown, { passive: false });
+    this.canvas.addEventListener("keydown", this.handleCanvasKeyDown);
     this.overlay.addEventListener("pointerdown", this.handleRetryPointerDown, { passive: false });
 
     if (CONFIG.input.preventContextMenu) {
@@ -124,12 +135,9 @@ class YouAreTheSoccerBallGame {
       window.addEventListener("resize", this.resizeCanvas, { passive: true });
     }
 
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden && CONFIG.world.pauseWhenHidden) {
-        this.lastFrameAt = null;
-        this.accumulator = 0;
-      }
-    });
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    window.addEventListener("pagehide", this.handlePageHide);
+    window.addEventListener("pageshow", this.handlePageShow);
   }
 
   async preloadAssets() {
@@ -202,8 +210,24 @@ class YouAreTheSoccerBallGame {
 
     if (this.state === STATES.FALLING || this.state === STATES.GAME_OVER) return;
 
-    const point = this.pointerToWorld(event);
-    const now = performance.now();
+    this.attemptKick(this.pointerToWorld(event), performance.now());
+  }
+
+  handleCanvasKeyDown(event) {
+    if (event.key !== " " && event.key !== "Enter") return;
+    event.preventDefault();
+    this.handleAudioGesture();
+
+    if (CONFIG.rules.autoPlay) return;
+
+    this.attemptKick(
+      { x: this.ball.x, y: this.ball.y },
+      performance.now(),
+    );
+  }
+
+  attemptKick(point, now) {
+    if (this.state === STATES.FALLING || this.state === STATES.GAME_OVER) return;
 
     if (this.state === STATES.READY) {
       this.startRound();
@@ -428,6 +452,13 @@ class YouAreTheSoccerBallGame {
   }
 
   frame(timestamp) {
+    if (CONFIG.world.pauseWhenHidden && (document.hidden || this.pageSuspended)) {
+      this.lastFrameAt = null;
+      this.accumulator = 0;
+      requestAnimationFrame(this.frame);
+      return;
+    }
+
     if (this.lastFrameAt === null) this.lastFrameAt = timestamp;
     const elapsed = Math.min(
       (timestamp - this.lastFrameAt) / 1000,
@@ -1015,22 +1046,72 @@ class YouAreTheSoccerBallGame {
   }
 
   primeAudio() {
-    if (this.audioUnlocked) return;
-    this.audioUnlocked = true;
-    this.music.load();
-    this.kickSound.load();
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (AudioContextClass) {
-      try {
-        this.audioContext = this.audioContext || new AudioContextClass();
-        if (this.audioContext.state === "suspended") {
-          this.audioContext.resume().catch(() => {});
-        }
-      } catch {
-        // Some browsers can deny AudioContext; HTMLAudio will retry later.
-      }
+    if (!this.audioUnlocked) {
+      this.audioUnlocked = true;
+      this.music.load();
+      this.kickSound.load();
     }
+
+    this.ensureAudioGraph();
+
+    if (this.audioContext?.state === "suspended" || this.audioContext?.state === "interrupted") {
+      this.audioContext.resume().catch(() => {});
+    }
+  }
+
+  ensureAudioGraph() {
+    if (this.musicGainNode && this.kickGainNode) return true;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return false;
+
+    try {
+      this.audioContext = this.audioContext || new AudioContextClass();
+
+      if (!this.musicGainNode) {
+        const musicGainNode = this.audioContext.createGain();
+        musicGainNode.gain.value = 0;
+        const musicSourceNode = this.audioContext.createMediaElementSource(this.music);
+        musicSourceNode.connect(musicGainNode);
+        musicGainNode.connect(this.audioContext.destination);
+        this.musicSourceNode = musicSourceNode;
+        this.musicGainNode = musicGainNode;
+      }
+
+      if (!this.kickGainNode) {
+        const kickGainNode = this.audioContext.createGain();
+        kickGainNode.gain.value = CONFIG.audio.kickSoundVolume;
+        const kickSourceNode = this.audioContext.createMediaElementSource(this.kickSound);
+        kickSourceNode.connect(kickGainNode);
+        kickGainNode.connect(this.audioContext.destination);
+        this.kickSourceNode = kickSourceNode;
+        this.kickGainNode = kickGainNode;
+      }
+
+      // iOS does not expose reliable script control over HTMLMediaElement.volume.
+      // Keep both elements at unity and control their levels in the Web Audio graph.
+      this.music.volume = 1;
+      this.kickSound.volume = 1;
+      return true;
+    } catch {
+      // Keep any graph branch that was created successfully; the remaining
+      // element continues to use the HTMLAudio fallback.
+      if (this.musicGainNode) this.music.volume = 1;
+      if (this.kickGainNode) this.kickSound.volume = 1;
+      return Boolean(this.musicGainNode || this.kickGainNode);
+    }
+  }
+
+  setMusicOutputVolume(volume) {
+    const nextVolume = clamp(volume, 0, 1);
+
+    if (this.musicGainNode && this.audioContext) {
+      const now = this.audioContext.currentTime;
+      this.musicGainNode.gain.cancelScheduledValues(now);
+      this.musicGainNode.gain.setValueAtTime(nextVolume, now);
+      return;
+    }
+
+    this.music.volume = nextVolume;
   }
 
   tryStartMusic() {
@@ -1053,7 +1134,7 @@ class YouAreTheSoccerBallGame {
     }
 
     this.cancelMusicFade();
-    this.music.volume = 0;
+    this.setMusicOutputVolume(0);
     this.music.muted = this.muted;
     const attemptId = ++this.audioPlayAttempt;
     let playAttempt;
@@ -1068,10 +1149,7 @@ class YouAreTheSoccerBallGame {
     if (playAttempt && typeof playAttempt.then === "function") {
       playAttempt
         .then(() => {
-          if (attemptId !== this.audioPlayAttempt) {
-            this.music.pause();
-            return;
-          }
+          if (attemptId !== this.audioPlayAttempt) return;
           this.musicStarted = true;
           this.musicPending = false;
           this.startKickPromptFade();
@@ -1114,6 +1192,15 @@ class YouAreTheSoccerBallGame {
     const duration = Math.max(0, CONFIG.audio.musicFadeInMs);
     const targetVolume = CONFIG.audio.musicVolume;
 
+    if (this.musicGainNode && this.audioContext) {
+      const now = this.audioContext.currentTime;
+      const gain = this.musicGainNode.gain;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(0, now);
+      gain.linearRampToValueAtTime(targetVolume, now + duration / 1000);
+      return;
+    }
+
     if (duration === 0) {
       this.music.volume = targetVolume;
       return;
@@ -1148,13 +1235,20 @@ class YouAreTheSoccerBallGame {
       cancelAnimationFrame(this.musicFadeFrame);
       this.musicFadeFrame = null;
     }
+
+    if (this.musicGainNode && this.audioContext) {
+      const now = this.audioContext.currentTime;
+      const currentVolume = this.musicGainNode.gain.value;
+      this.musicGainNode.gain.cancelScheduledValues(now);
+      this.musicGainNode.gain.setValueAtTime(currentVolume, now);
+    }
   }
 
   stopMusic(resetTrack) {
     this.audioPlayAttempt += 1;
     this.cancelMusicFade();
     this.music.pause();
-    this.music.volume = 0;
+    this.setMusicOutputVolume(0);
     if (resetTrack) {
       try {
         this.music.currentTime = 0;
@@ -1164,6 +1258,79 @@ class YouAreTheSoccerBallGame {
     }
     this.musicStarted = false;
     this.musicPending = false;
+  }
+
+  handleVisibilityChange() {
+    if (document.hidden) {
+      this.suspendForPageLifecycle();
+    } else {
+      this.resumeFromPageLifecycle();
+    }
+  }
+
+  handlePageHide() {
+    this.suspendForPageLifecycle();
+  }
+
+  handlePageShow() {
+    this.resumeFromPageLifecycle();
+  }
+
+  suspendForPageLifecycle() {
+    if (this.pageSuspended) return;
+    this.pageSuspended = true;
+    this.lastFrameAt = null;
+    this.accumulator = 0;
+    this.resumeMusicAfterPageShow =
+      (this.musicStarted || !this.music.paused) &&
+      this.score >= CONFIG.audio.musicStartScore &&
+      this.state !== STATES.GAME_OVER;
+    this.audioPlayAttempt += 1;
+
+    if (!this.music.paused) this.music.pause();
+    if (this.audioContext?.state === "running") {
+      this.audioContext.suspend().catch(() => {});
+    }
+  }
+
+  resumeFromPageLifecycle() {
+    const shouldResumeMusic =
+      this.resumeMusicAfterPageShow &&
+      !this.muted &&
+      this.score >= CONFIG.audio.musicStartScore &&
+      this.state !== STATES.GAME_OVER;
+
+    this.pageSuspended = false;
+    this.resumeMusicAfterPageShow = false;
+    this.lastFrameAt = null;
+    this.accumulator = 0;
+
+    if (this.audioContext?.state === "suspended" || this.audioContext?.state === "interrupted") {
+      this.audioContext.resume().catch(() => {});
+    }
+
+    if (!shouldResumeMusic) return;
+
+    const attemptId = ++this.audioPlayAttempt;
+    try {
+      const playAttempt = this.music.play();
+      if (playAttempt && typeof playAttempt.then === "function") {
+        playAttempt
+          .then(() => {
+            if (attemptId !== this.audioPlayAttempt) return;
+            this.musicStarted = true;
+            this.musicPending = false;
+          })
+          .catch(() => {
+            if (attemptId !== this.audioPlayAttempt) return;
+            this.musicPending = CONFIG.audio.retryOnNextGesture;
+          });
+      }
+    } catch {
+      if (attemptId === this.audioPlayAttempt) {
+        this.musicPending = CONFIG.audio.retryOnNextGesture;
+      }
+    }
   }
 
   updateMuteButton() {
