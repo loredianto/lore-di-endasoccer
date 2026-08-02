@@ -237,6 +237,28 @@ h1 {
   background: #ffe477;
 }
 
+.music-credit {
+  margin: 7px 2px 0;
+  color: var(--muted);
+  font-size: clamp(0.56rem, 2.2vw, 0.68rem);
+  line-height: 1.3;
+  text-align: center;
+}
+
+.music-credit cite {
+  font-style: normal;
+}
+
+.music-credit a {
+  color: var(--ink);
+  text-underline-offset: 2px;
+}
+
+.music-credit a:hover,
+.music-credit a:focus-visible {
+  color: var(--accent);
+}
+
 .sr-only {
   position: absolute !important;
   width: 1px !important;

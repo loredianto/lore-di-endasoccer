@@ -7,7 +7,7 @@
  */
 
 export const ACTIVE_DIFFICULTY = "ACCESSIBLE"; // "HARD" or "ACCESSIBLE"
-export const DEBUG_MODE = false; // true or false
+export const DEBUG_MODE = true; // true or false
 
 const SHARED = {
   world: {

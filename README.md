@@ -172,11 +172,19 @@ endasoccer/
 
 ## Music, assets, and tribute notice
 
-The files in `assets/audio/` were supplied by the user and are only referenced
-by the code. **Do not publish or redistribute them without explicit permission
-from their copyright owners or licenses that allow it.** Before distributing
-the game, replace them with original or licensed audio, or obtain the necessary
-authorization.
+The background music is taken from *Endacopia*, created by
+[AndyL4nd](https://andyl4nd.itch.io/). *Endacopia* and its music remain the
+property of AndyL4nd. All rights reserved. This project is an unofficial,
+non-commercial tribute and is not affiliated with or endorsed by AndyL4nd.
+
+This attribution does not grant a license or permission to redistribute the
+music. **Do not publish the included track without explicit authorization from
+its copyright owner.** Before distributing the game, obtain the necessary
+permission or replace the track with original or properly licensed audio.
+
+The kick sound effect was supplied by the user and is only referenced by the
+code. It must likewise be distributed only if its license or copyright owner
+allows it.
 
 Likewise, use only original or properly licensed sprites, names, and interface
 elements. A mechanic inspired by another work may be described as an unofficial
