@@ -4,12 +4,13 @@ const STATES = Object.freeze({
   READY: "READY",
   PLAYING: "PLAYING",
   WON: "WON",
+  FALLING: "FALLING",
   GAME_OVER: "GAME_OVER",
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-class EndaSoccerGame {
+class YouAreTheSoccerBallGame {
   constructor() {
     this.canvas = document.querySelector("#game-canvas");
     this.ctx = this.canvas.getContext("2d", { alpha: false });
@@ -25,18 +26,20 @@ class EndaSoccerGame {
     this.muteLabel = document.querySelector("#mute-label");
     this.scoreAnnouncement = document.querySelector("#score-announcement");
     this.stateAnnouncement = document.querySelector("#state-announcement");
-    this.difficultyLabel = document.querySelector("#difficulty-label");
 
     this.assets = {};
     this.state = STATES.READY;
     this.score = 0;
     this.highScore = this.readHighScore();
+    this.attemptCount = this.readAttemptCount();
     this.ball = this.createBall();
-    this.trajectoryProgress = 0.5;
+    this.trajectoryProgress = 0;
     this.kickQueued = false;
+    this.pendingGameOverReason = null;
     this.lastKickAt = Number.NEGATIVE_INFINITY;
     this.kickPoseUntil = 0;
     this.winBannerUntil = 0;
+    this.medalUnlockedAt = {};
     this.missFeedback = null;
     this.lastFrameAt = null;
     this.accumulator = 0;
@@ -45,6 +48,7 @@ class EndaSoccerGame {
     this.musicPending = false;
     this.audioPlayAttempt = 0;
     this.musicFadeFrame = null;
+    this.kickPromptFadeStartedAt = null;
     this.muted = CONFIG.audio.mutedByDefault;
     this.audioContext = null;
 
@@ -54,22 +58,35 @@ class EndaSoccerGame {
     this.music.preload = CONFIG.audio.preload;
     this.music.muted = this.muted;
 
+    this.kickSound = new Audio(CONFIG.audio.kickSoundSrc);
+    this.kickSound.volume = CONFIG.audio.kickSoundVolume;
+    this.kickSound.preload = CONFIG.audio.preload;
+    this.kickSound.muted = this.muted;
+
     this.frame = this.frame.bind(this);
     this.handlePointerDown = this.handlePointerDown.bind(this);
+    this.handleRetryPointerDown = this.handleRetryPointerDown.bind(this);
+    this.handleAudioGesture = this.handleAudioGesture.bind(this);
     this.resizeCanvas = this.resizeCanvas.bind(this);
   }
 
   async init() {
-    this.difficultyLabel.textContent = `Difficulty: ${CONFIG.difficultyLabel}`;
     this.installEvents();
     this.resizeCanvas();
     this.resetGame();
     await this.preloadAssets();
+    if (CONFIG.rules.autoPlay) this.startRound();
     requestAnimationFrame(this.frame);
   }
 
   installEvents() {
+    document.addEventListener("pointerdown", this.handleAudioGesture, {
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener("keydown", this.handleAudioGesture, { capture: true });
     this.canvas.addEventListener("pointerdown", this.handlePointerDown, { passive: false });
+    this.overlay.addEventListener("pointerdown", this.handleRetryPointerDown, { passive: false });
 
     if (CONFIG.input.preventContextMenu) {
       this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -85,15 +102,14 @@ class EndaSoccerGame {
     });
 
     this.overlayAction.addEventListener("click", () => {
-      this.primeAudio();
-      this.resetGame();
-      this.canvas.focus({ preventScroll: true });
+      if (this.state === STATES.GAME_OVER) this.retryGame();
     });
 
     this.muteButton.addEventListener("click", () => {
       this.primeAudio();
       this.muted = !this.muted;
       this.music.muted = this.muted;
+      this.kickSound.muted = this.muted;
       this.updateMuteButton();
 
       if (!this.muted && this.score >= CONFIG.audio.musicStartScore) {
@@ -142,12 +158,10 @@ class EndaSoccerGame {
   createBall() {
     return {
       x: CONFIG.game.initialBallX,
-      y: CONFIG.trajectory.apexY,
+      y: CONFIG.trajectory.contactY,
       radius: CONFIG.game.ballRadius,
-      velocityX: 0,
       velocityY: 0,
-      isDescending: true,
-      rotation: 0,
+      isDescending: false,
     };
   }
 
@@ -156,17 +170,20 @@ class EndaSoccerGame {
     this.state = STATES.READY;
     this.score = 0;
     this.ball = this.createBall();
-    this.trajectoryProgress = 0.5;
+    this.trajectoryProgress = 0;
     this.kickQueued = false;
+    this.pendingGameOverReason = null;
     this.lastKickAt = Number.NEGATIVE_INFINITY;
     this.kickPoseUntil = 0;
     this.winBannerUntil = 0;
+    this.medalUnlockedAt = {};
     this.missFeedback = null;
     this.accumulator = 0;
     this.lastFrameAt = null;
+    this.kickPromptFadeStartedAt = null;
     this.showReadyOverlay();
     this.updateScoreAnnouncement();
-    this.announceState("Game ready. Tap or click the play area to start.");
+    this.announceState("Game ready. Tap or click to kick the stationary ball upward.");
     this.updateMuteButton();
   }
 
@@ -180,13 +197,10 @@ class EndaSoccerGame {
     }
 
     event.preventDefault();
-    this.primeAudio();
 
-    if (this.musicPending && CONFIG.audio.retryOnNextGesture) {
-      this.tryStartMusic();
-    }
+    if (CONFIG.rules.autoPlay) return;
 
-    if (this.state === STATES.GAME_OVER) return;
+    if (this.state === STATES.FALLING || this.state === STATES.GAME_OVER) return;
 
     const point = this.pointerToWorld(event);
     const now = performance.now();
@@ -208,7 +222,7 @@ class EndaSoccerGame {
       };
 
       if (CONFIG.rules.failOnMistimedPress) {
-        this.finishGame("timing");
+        this.startBallFall("timing");
       }
       return;
     }
@@ -216,13 +230,42 @@ class EndaSoccerGame {
     this.queueKick(now);
   }
 
+  handleRetryPointerDown(event) {
+    if (this.state !== STATES.GAME_OVER) return;
+    if (
+      CONFIG.input.acceptPrimaryPointerOnly &&
+      ((!event.isPrimary && event.pointerType !== "mouse") ||
+        (event.pointerType === "mouse" && event.button !== 0))
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    this.retryGame();
+  }
+
+  retryGame() {
+    this.primeAudio();
+    this.resetGame();
+    this.startRound();
+    this.canvas.focus({ preventScroll: true });
+  }
+
   startRound() {
+    this.attemptCount += 1;
+    this.writeAttemptCount();
+    this.updateScoreAnnouncement();
     this.state = STATES.PLAYING;
-    this.trajectoryProgress = 0.5;
+    this.trajectoryProgress = 0;
     this.kickQueued = false;
+    this.pendingGameOverReason = null;
     this.syncBallToTrajectory();
     this.hideOverlay();
-    this.announceState("Game started. Press when the ball crosses the timing zone.");
+    this.kickPoseUntil = performance.now() + CONFIG.game.kickPoseDurationMs;
+    this.playKickSound();
+    this.announceState(
+      "Opening kick complete. Score remains zero until the first timed juggle.",
+    );
   }
 
   pointerToWorld(event) {
@@ -246,20 +289,39 @@ class EndaSoccerGame {
     this.kickQueued = true;
     this.lastKickAt = now;
     this.missFeedback = null;
+    this.playKickSound();
+  }
+
+  tryAutoKick(now = performance.now()) {
+    if (CONFIG.rules.autoPlay && this.canKick(now)) {
+      this.queueKick(now);
+    }
   }
 
   completeScriptedKick() {
     const now = performance.now();
     this.kickQueued = false;
     this.kickPoseUntil = now + CONFIG.game.kickPoseDurationMs;
+    const previousScore = this.score;
     this.score += 1;
+
+    const unlockedMedals = CONFIG.layout.medals.items.filter(
+      (medal) => previousScore < medal.score && this.score >= medal.score,
+    );
+    for (const medal of unlockedMedals) {
+      this.medalUnlockedAt[medal.id] = now;
+    }
 
     if (this.score > this.highScore) {
       this.highScore = this.score;
       this.writeHighScore();
     }
 
-    if (this.score === CONFIG.game.targetScore && this.state === STATES.PLAYING) {
+    if (
+      previousScore < CONFIG.game.targetScore &&
+      this.score >= CONFIG.game.targetScore &&
+      this.state === STATES.PLAYING
+    ) {
       this.state = STATES.WON;
       this.winBannerUntil = now + CONFIG.game.winBannerDurationMs;
       this.announceState(
@@ -275,22 +337,24 @@ class EndaSoccerGame {
   }
 
   update(dt) {
+    if (this.state === STATES.FALLING) {
+      this.updateFallingBall(dt);
+      return;
+    }
+
     if (this.state !== STATES.PLAYING && this.state !== STATES.WON) return;
 
     const cycleDurationSeconds = CONFIG.trajectory.cycleDurationMs / 1000;
     this.trajectoryProgress += dt / cycleDurationSeconds;
-    this.ball.rotation +=
-      (CONFIG.trajectory.rotationRadiansPerCycle / cycleDurationSeconds) * dt;
 
     if (this.trajectoryProgress >= 1) {
       const overflow = this.trajectoryProgress - 1;
       this.trajectoryProgress = 1;
       this.syncBallToTrajectory();
+      this.tryAutoKick(performance.now());
 
       if (!this.kickQueued) {
-        this.ball.y = CONFIG.world.floorY - this.ball.radius;
-        this.ball.velocityY = 0;
-        this.finishGame("ground");
+        this.startBallFall("ground");
         return;
       }
 
@@ -301,30 +365,62 @@ class EndaSoccerGame {
     }
 
     this.syncBallToTrajectory();
+    this.tryAutoKick(performance.now());
   }
 
   syncBallToTrajectory() {
     const progress = clamp(this.trajectoryProgress, 0, 1);
-    const distanceFromApex = Math.abs(progress * 2 - 1);
-    const curve = distanceFromApex ** CONFIG.trajectory.curveExponent;
-    const travel = CONFIG.trajectory.contactY - CONFIG.trajectory.apexY;
-    const cycleDurationSeconds = CONFIG.trajectory.cycleDurationMs / 1000;
-    const direction = progress < 0.5 ? -1 : 1;
-    const derivative =
-      (travel * CONFIG.trajectory.curveExponent *
-        distanceFromApex ** (CONFIG.trajectory.curveExponent - 1) * 2) /
-      cycleDurationSeconds;
+    const duration = CONFIG.trajectory.cycleDurationMs / 1000;
+    const elapsed = progress * duration;
+    const { gravity, launchVelocity } = this.getBallistics();
 
     this.ball.x = CONFIG.game.initialBallX;
-    this.ball.y = CONFIG.trajectory.apexY + travel * curve;
-    this.ball.velocityX = 0;
-    this.ball.velocityY = derivative * direction;
-    this.ball.isDescending = progress >= 0.5;
+    this.ball.y =
+      CONFIG.trajectory.contactY +
+      launchVelocity * elapsed +
+      0.5 * gravity * elapsed ** 2;
+    this.ball.velocityY = launchVelocity + gravity * elapsed;
+    this.ball.isDescending = this.ball.velocityY >= 0;
+  }
+
+  getBallistics() {
+    const duration = CONFIG.trajectory.cycleDurationMs / 1000;
+    const height = CONFIG.trajectory.contactY - CONFIG.trajectory.apexY;
+    const gravity = (8 * height) / duration ** 2;
+    return {
+      gravity,
+      launchVelocity: (-gravity * duration) / 2,
+    };
+  }
+
+  startBallFall(reason) {
+    if (this.state === STATES.FALLING || this.state === STATES.GAME_OVER) return;
+    this.state = STATES.FALLING;
+    this.pendingGameOverReason = reason;
+    this.kickQueued = false;
+    this.announceState(
+      reason === "timing" ? "Mistimed press. The ball is falling." : "Missed kick.",
+    );
+  }
+
+  updateFallingBall(dt) {
+    const { gravity } = this.getBallistics();
+    this.ball.velocityY += gravity * dt;
+    this.ball.y += this.ball.velocityY * dt;
+    this.ball.isDescending = this.ball.velocityY >= 0;
+
+    const floorContactY = CONFIG.world.floorY - this.ball.radius;
+    if (this.ball.y >= floorContactY) {
+      this.ball.y = floorContactY;
+      this.ball.velocityY = 0;
+      this.finishGame(this.pendingGameOverReason ?? "ground");
+    }
   }
 
   finishGame(reason = "ground") {
     if (this.state === STATES.GAME_OVER) return;
     this.state = STATES.GAME_OVER;
+    this.pendingGameOverReason = null;
     if (CONFIG.audio.stopOnGameOver) this.stopMusic(true);
     this.showGameOverOverlay(reason);
     const cause = reason === "timing" ? "Mistimed press." : "The ball hit the ground.";
@@ -367,10 +463,12 @@ class EndaSoccerGame {
     this.ctx.setTransform(this.canvas.width / width, 0, 0, this.canvas.height / height, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
     this.drawBackground();
-    this.drawTimingGuide();
     this.drawPlayer(timestamp);
+    if (CONFIG.layout.timingZone.visible) this.drawTimingZone();
+    this.drawKickPrompt(timestamp);
     this.drawBall();
-    this.drawHud();
+    this.drawHud(timestamp);
+    if (CONFIG.debugMode && CONFIG.layout.debugFlag.visible) this.drawDebugFlag();
 
     if (this.missFeedback && timestamp < this.missFeedback.until) {
       this.drawMissFeedback(timestamp);
@@ -385,6 +483,7 @@ class EndaSoccerGame {
     const background = this.assets.background;
     if (background) {
       this.drawImageCover(background, 0, 0, CONFIG.world.width, CONFIG.world.height);
+      this.drawBackgroundShade();
       return;
     }
 
@@ -434,6 +533,15 @@ class EndaSoccerGame {
     for (let x = 0; x < width; x += 48) {
       ctx.fillRect(x, floorY + 26 + ((x / 48) % 2) * 15, 29, 4);
     }
+
+    this.drawBackgroundShade();
+  }
+
+  drawBackgroundShade() {
+    const opacity = clamp(CONFIG.layout.backgroundShadeOpacity, 0, 1);
+    if (opacity === 0) return;
+    this.ctx.fillStyle = `rgba(3, 5, 18, ${opacity})`;
+    this.ctx.fillRect(0, 0, CONFIG.world.width, CONFIG.world.height);
   }
 
   drawImageCover(image, x, y, width, height) {
@@ -465,35 +573,64 @@ class EndaSoccerGame {
     );
   }
 
-  drawTimingGuide() {
+  drawTimingZone() {
     const ctx = this.ctx;
-    const top = CONFIG.rules.kickWindowTopY;
-    const bottom = CONFIG.rules.kickWindowBottomY;
-    const width = CONFIG.layout.timingGuideWidth;
+    const { width, lineWidth, dash, tracksBallBottom } = CONFIG.layout.timingZone;
+    const visualOffset = tracksBallBottom ? this.ball.radius : 0;
+    const top = CONFIG.rules.kickWindowTopY + visualOffset;
+    const bottom = CONFIG.rules.kickWindowBottomY + visualOffset;
     const left = CONFIG.game.initialBallX - width / 2;
     const ballIsInside =
-      this.ball.y >= top &&
-      this.ball.y <= bottom &&
+      this.ball.y >= CONFIG.rules.kickWindowTopY &&
+      this.ball.y <= CONFIG.rules.kickWindowBottomY &&
       (!CONFIG.rules.requireDescendingBall || this.ball.isDescending);
 
     ctx.save();
     ctx.fillStyle = ballIsInside ? "rgba(32, 196, 199, 0.22)" : "rgba(255, 244, 214, 0.08)";
     ctx.fillRect(left, top, width, bottom - top);
     ctx.strokeStyle = ballIsInside ? "#20c4c7" : "rgba(255, 244, 214, 0.55)";
-    ctx.lineWidth = CONFIG.layout.timingGuideLineWidth;
-    ctx.setLineDash([13, 9]);
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash(dash);
     ctx.beginPath();
     ctx.moveTo(left, top);
     ctx.lineTo(left + width, top);
     ctx.moveTo(left, bottom);
     ctx.lineTo(left + width, bottom);
     ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = ballIsInside ? "#20c4c7" : "rgba(255, 244, 214, 0.75)";
-    ctx.font = "700 18px 'Courier New', monospace";
-    ctx.textAlign = "center";
+    ctx.restore();
+  }
+
+  drawKickPrompt(timestamp) {
+    const ctx = this.ctx;
+    const prompt = "Kick ↓";
+    const { leftX, fontSize, underlineGap, underlineLineWidth, fadeOutMs } =
+      CONFIG.layout.kickPrompt;
+    const zoneStartY =
+      CONFIG.rules.kickWindowTopY +
+      (CONFIG.layout.timingZone.tracksBallBottom ? this.ball.radius : 0);
+    const baselineY = zoneStartY + fontSize;
+    const fadeProgress = this.kickPromptFadeStartedAt === null
+      ? 0
+      : clamp((timestamp - this.kickPromptFadeStartedAt) / Math.max(1, fadeOutMs), 0, 1);
+
+    if (fadeProgress >= 1) return;
+
+    ctx.save();
+    ctx.globalAlpha = 1 - fadeProgress;
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#ffffff";
+    ctx.font = `700 ${fontSize}px 'Courier New', monospace`;
+    ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
-    ctx.fillText("PRESS", CONFIG.game.initialBallX, top - CONFIG.layout.timingGuideLabelGap);
+    ctx.fillText(prompt, leftX, baselineY);
+
+    const underlineWidth = Math.ceil(ctx.measureText(prompt).width);
+    const underlineY = baselineY + underlineGap;
+    ctx.lineWidth = underlineLineWidth;
+    ctx.beginPath();
+    ctx.moveTo(leftX, underlineY);
+    ctx.lineTo(leftX + underlineWidth, underlineY);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -505,12 +642,16 @@ class EndaSoccerGame {
     const { playerX, playerBottomY, playerWidth, playerHeight } = CONFIG.game;
 
     if (player) {
+      const imageRatio = player.naturalWidth / player.naturalHeight;
+      const boundsRatio = playerWidth / playerHeight;
+      const drawWidth = imageRatio > boundsRatio ? playerWidth : playerHeight * imageRatio;
+      const drawHeight = imageRatio > boundsRatio ? playerWidth / imageRatio : playerHeight;
       this.ctx.drawImage(
         player,
-        playerX - playerWidth / 2,
-        playerBottomY - playerHeight,
-        playerWidth,
-        playerHeight,
+        playerX - drawWidth / 2,
+        playerBottomY - drawHeight,
+        drawWidth,
+        drawHeight,
       );
       return;
     }
@@ -550,7 +691,7 @@ class EndaSoccerGame {
   }
 
   drawBall() {
-    const { x, y, radius, rotation } = this.ball;
+    const { x, y, radius } = this.ball;
     const ctx = this.ctx;
 
     ctx.save();
@@ -565,7 +706,6 @@ class EndaSoccerGame {
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(rotation);
 
     if (this.assets.ball) {
       ctx.drawImage(this.assets.ball, -radius, -radius, radius * 2, radius * 2);
@@ -605,7 +745,7 @@ class EndaSoccerGame {
     ctx.restore();
   }
 
-  drawHud() {
+  drawHud(timestamp) {
     const ctx = this.ctx;
     const panelWidth = CONFIG.layout.hud.width;
     const panelHeight = CONFIG.layout.hud.height;
@@ -630,24 +770,123 @@ class EndaSoccerGame {
     ctx.fillStyle = "#fff8de";
     ctx.strokeStyle = "#17131b";
     ctx.lineWidth = 6;
-    ctx.font = "900 42px 'Courier New', monospace";
+    const scoreText = String(this.score).padStart(3, "0");
+    const availableTextWidth = panelWidth - CONFIG.layout.hud.textPadding * 2;
+    let scoreFontSize = CONFIG.layout.hud.scoreFontSize;
+    ctx.font = `900 ${scoreFontSize}px 'Courier New', monospace`;
+    while (
+      ctx.measureText(scoreText).width > availableTextWidth &&
+      scoreFontSize > CONFIG.layout.hud.scoreMinFontSize
+    ) {
+      scoreFontSize -= 1;
+      ctx.font = `900 ${scoreFontSize}px 'Courier New', monospace`;
+    }
     ctx.strokeText(
-      String(this.score).padStart(3, "0"),
+      scoreText,
       CONFIG.world.width / 2,
       panelY + CONFIG.layout.hud.scoreY,
     );
     ctx.fillText(
-      String(this.score).padStart(3, "0"),
+      scoreText,
       CONFIG.world.width / 2,
       panelY + CONFIG.layout.hud.scoreY,
     );
 
-    ctx.font = "700 17px 'Courier New', monospace";
+    const subtitle =
+      `TRY: ${String(this.attemptCount).padStart(3, "0")}  ` +
+      `RECORD: ${String(this.highScore).padStart(3, "0")}  ` +
+      `GOAL: ${CONFIG.game.targetScore}`;
+    let subtitleFontSize = CONFIG.layout.hud.subtitleFontSize;
+    ctx.font = `700 ${subtitleFontSize}px 'Courier New', monospace`;
+    while (
+      ctx.measureText(subtitle).width > availableTextWidth &&
+      subtitleFontSize > CONFIG.layout.hud.subtitleMinFontSize
+    ) {
+      subtitleFontSize -= 1;
+      ctx.font = `700 ${subtitleFontSize}px 'Courier New', monospace`;
+    }
     ctx.lineWidth = 3;
-    const subtitle = `RECORD ${String(this.highScore).padStart(3, "0")}  •  GOAL ${CONFIG.game.targetScore}`;
     ctx.strokeText(subtitle, CONFIG.world.width / 2, panelY + CONFIG.layout.hud.subtitleY);
     ctx.fillStyle = "#f5cf53";
     ctx.fillText(subtitle, CONFIG.world.width / 2, panelY + CONFIG.layout.hud.subtitleY);
+
+    for (const medal of CONFIG.layout.medals.items) {
+      if (this.score >= medal.score) this.drawMedal(medal, timestamp);
+    }
+  }
+
+  drawMedal(medal, timestamp) {
+    const ctx = this.ctx;
+    const { size, y, popDurationMs } = CONFIG.layout.medals;
+    const unlockedAt = this.medalUnlockedAt[medal.id] ?? timestamp;
+    const progress = clamp((timestamp - unlockedAt) / popDurationMs, 0, 1);
+    const entranceScale = clamp(progress * 4, 0, 1);
+    const bounce = progress < 1 ? Math.sin(progress * Math.PI) * 0.16 : 0;
+    const scale = entranceScale * (1 + bounce);
+    const unit = size / 54;
+
+    ctx.save();
+    ctx.translate(medal.x, y);
+    ctx.scale(scale, scale);
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.fillStyle = "#17131b";
+    ctx.fillRect(-17 * unit, -29 * unit, 13 * unit, 29 * unit);
+    ctx.fillRect(4 * unit, -29 * unit, 13 * unit, 29 * unit);
+    ctx.fillStyle = medal.ribbon;
+    ctx.fillRect(-13 * unit, -27 * unit, 9 * unit, 27 * unit);
+    ctx.fillRect(4 * unit, -27 * unit, 9 * unit, 27 * unit);
+
+    const points = [
+      [-17, -10], [-10, -17], [10, -17], [17, -10],
+      [17, 10], [10, 17], [-10, 17], [-17, 10],
+    ];
+    ctx.beginPath();
+    points.forEach(([px, py], index) => {
+      const x = px * unit;
+      const pointY = (py + 7) * unit;
+      if (index === 0) ctx.moveTo(x, pointY);
+      else ctx.lineTo(x, pointY);
+    });
+    ctx.closePath();
+    ctx.fillStyle = medal.face;
+    ctx.strokeStyle = "#17131b";
+    ctx.lineWidth = 5 * unit;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = medal.shade;
+    ctx.fillRect(-12 * unit, 13 * unit, 24 * unit, 5 * unit);
+    ctx.fillRect(12 * unit, -1 * unit, 5 * unit, 14 * unit);
+    ctx.fillStyle = medal.highlight;
+    ctx.fillRect(-10 * unit, -7 * unit, 12 * unit, 4 * unit);
+    ctx.fillRect(-13 * unit, -3 * unit, 4 * unit, 9 * unit);
+
+    ctx.fillStyle = "#17131b";
+    ctx.font = `900 ${medal.label.length > 2 ? 10 : 13}px 'Courier New', monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(medal.label, 0, 8 * unit);
+    ctx.restore();
+  }
+
+  drawDebugFlag() {
+    const ctx = this.ctx;
+    const { x, y, width, height, label } = CONFIG.layout.debugFlag;
+
+    ctx.save();
+    ctx.fillStyle = "#17131b";
+    ctx.fillRect(x - 3, y - 3, width + 6, height + 6);
+    ctx.fillStyle = "#d64045";
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = "#f5cf53";
+    ctx.fillRect(x, y, 6, height);
+    ctx.fillStyle = "#fff8de";
+    ctx.font = "900 15px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x + width / 2 + 3, y + height / 2 + 1);
+    ctx.restore();
   }
 
   drawMissFeedback(timestamp) {
@@ -702,7 +941,7 @@ class EndaSoccerGame {
     this.overlayKicker.textContent = `Goal: ${CONFIG.game.targetScore}`;
     this.overlayTitle.textContent = "Keep the ball in the air";
     this.overlayCopy.textContent =
-      "Press to start, then press when the ball crosses the timing zone.";
+      "Kick the stationary ball upward, then time every descending kick.";
     this.overlayAction.hidden = true;
   }
 
@@ -717,12 +956,13 @@ class EndaSoccerGame {
     this.overlay.setAttribute("aria-hidden", "false");
     this.overlayKicker.textContent = `Record: ${this.highScore}`;
     this.overlayTitle.textContent = reason === "timing" ? "Bad timing!" : "Ball dropped!";
-    this.overlayCopy.textContent = `You scored ${this.score} juggles.`;
+    this.overlayCopy.textContent = `You scored ${this.score} juggles. Tap anywhere to retry.`;
     this.overlayAction.hidden = false;
   }
 
   updateScoreAnnouncement() {
-    this.scoreAnnouncement.textContent = `Score ${this.score}. Record ${this.highScore}.`;
+    this.scoreAnnouncement.textContent =
+      `Try ${this.attemptCount}. Score ${this.score}. Record ${this.highScore}.`;
   }
 
   announceState(message) {
@@ -746,10 +986,39 @@ class EndaSoccerGame {
     }
   }
 
+  readAttemptCount() {
+    try {
+      const value = Number.parseInt(
+        localStorage.getItem(CONFIG.game.attemptStorageKey) || "0",
+        10,
+      );
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  writeAttemptCount() {
+    try {
+      localStorage.setItem(CONFIG.game.attemptStorageKey, String(this.attemptCount));
+    } catch {
+      // The game remains usable even when localStorage is disabled.
+    }
+  }
+
+  handleAudioGesture() {
+    this.primeAudio();
+
+    if (!this.muted && this.score >= CONFIG.audio.musicStartScore) {
+      this.tryStartMusic();
+    }
+  }
+
   primeAudio() {
     if (this.audioUnlocked) return;
     this.audioUnlocked = true;
     this.music.load();
+    this.kickSound.load();
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (AudioContextClass) {
@@ -768,9 +1037,13 @@ class EndaSoccerGame {
     if (
       this.muted ||
       this.score < CONFIG.audio.musicStartScore ||
-      this.state === STATES.GAME_OVER ||
-      (!this.audioUnlocked && !CONFIG.audio.retryOnNextGesture)
+      this.state === STATES.GAME_OVER
     ) {
+      return;
+    }
+
+    if (!this.audioUnlocked) {
+      this.musicPending = CONFIG.audio.retryOnNextGesture;
       return;
     }
 
@@ -801,6 +1074,7 @@ class EndaSoccerGame {
           }
           this.musicStarted = true;
           this.musicPending = false;
+          this.startKickPromptFade();
           this.startMusicFade(attemptId);
         })
         .catch(() => {
@@ -811,7 +1085,28 @@ class EndaSoccerGame {
     } else {
       this.musicStarted = true;
       this.musicPending = false;
+      this.startKickPromptFade();
       this.startMusicFade(attemptId);
+    }
+  }
+
+  startKickPromptFade() {
+    if (this.kickPromptFadeStartedAt === null) {
+      this.kickPromptFadeStartedAt = performance.now();
+    }
+  }
+
+  playKickSound() {
+    if (this.muted || !this.audioUnlocked) return;
+
+    try {
+      this.kickSound.currentTime = 0;
+      const playAttempt = this.kickSound.play();
+      if (playAttempt && typeof playAttempt.catch === "function") {
+        playAttempt.catch(() => {});
+      }
+    } catch {
+      // A blocked sound effect must never interrupt gameplay.
     }
   }
 
@@ -873,15 +1168,15 @@ class EndaSoccerGame {
 
   updateMuteButton() {
     this.muteButton.setAttribute("aria-pressed", String(this.muted));
-    this.muteButton.title = this.muted ? "Enable music" : "Disable music";
+    this.muteButton.title = this.muted ? "Enable audio" : "Disable audio";
     this.muteIcon.textContent = this.muted ? "×" : "♪";
     this.muteLabel.textContent = this.muted ? "Audio off" : "Audio on";
   }
 }
 
-const game = new EndaSoccerGame();
+const game = new YouAreTheSoccerBallGame();
 game.init().catch((error) => {
-  console.error("Unable to initialize Enda Soccer:", error);
+  console.error("Unable to initialize You Are the Soccer Ball:", error);
   const announcement = document.querySelector("#state-announcement");
   const overlayTitle = document.querySelector("#overlay-title");
   const overlayCopy = document.querySelector("#overlay-copy");

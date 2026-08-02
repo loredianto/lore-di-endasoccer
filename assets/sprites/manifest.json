@@ -13,30 +13,30 @@
   },
   "assets": {
     "ball.png": {
-      "width": 128,
-      "height": 128,
-      "role": "interactive juggling ball",
+      "width": 256,
+      "height": 256,
+      "role": "cleaned classic black-and-white pixel-art juggling ball",
       "alpha": true,
       "anchor": { "x": 0.5, "y": 0.5 }
     },
     "player-idle.png": {
-      "width": 256,
-      "height": 256,
-      "role": "crouched idle player",
+      "width": 739,
+      "height": 692,
+      "role": "idle player with detached floating hands",
       "alpha": true,
       "anchor": { "x": 0.5, "y": 1 }
     },
     "player-kick.png": {
-      "width": 256,
-      "height": 256,
-      "role": "short upward juggling pose",
+      "width": 1254,
+      "height": 1254,
+      "role": "raised-foot juggling pose with detached floating hands",
       "alpha": true,
       "anchor": { "x": 0.5, "y": 1 }
     },
     "background.png": {
-      "width": 1920,
-      "height": 1080,
-      "role": "responsive gameplay environment",
+      "width": 992,
+      "height": 1586,
+      "role": "portrait pixel-art gameplay environment",
       "alpha": false,
       "fit": "cover",
       "focalPoint": { "x": 0.5, "y": 0.5 }

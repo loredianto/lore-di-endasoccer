@@ -59,12 +59,9 @@ button:focus-visible {
   place-items: center;
 }
 
-/*
- * The svh limit preserves space for the header and footer on short displays.
- * The Canvas stays at 5:8, so it is never distorted.
- */
+/* The svh limit preserves the compact header without distorting the 5:8 Canvas. */
 .game-card {
-  width: min(100%, 600px, max(244px, calc(62.5svh - 85px)));
+  width: min(100%, 600px, max(244px, calc(62.5svh - 48px)));
   margin-inline: auto;
 }
 
@@ -74,12 +71,11 @@ button:focus-visible {
   }
 
   .game-card {
-    width: min(100%, 600px, max(244px, calc(62.5dvh - 85px)));
+    width: min(100%, 600px, max(244px, calc(62.5dvh - 48px)));
   }
 }
 
-.game-header,
-.game-footer {
+.game-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -89,15 +85,6 @@ button:focus-visible {
 .game-header {
   min-height: 54px;
   padding: 0 2px 7px;
-}
-
-.eyebrow {
-  margin: 0 0 2px;
-  color: var(--accent);
-  font-size: clamp(0.58rem, 2.5vw, 0.74rem);
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
 }
 
 h1 {
@@ -149,8 +136,8 @@ h1 {
   overflow: hidden;
   border: clamp(3px, 0.9vw, 6px) solid var(--outline);
   border-radius: 8px;
-  background: #3c3442;
-  box-shadow: 0 14px 34px var(--shadow), inset 0 0 0 2px #5a4a63;
+  background: #070916;
+  box-shadow: 0 14px 38px rgba(4, 3, 10, 0.82), inset 0 0 0 2px #332b46;
   contain: layout paint;
   isolation: isolate;
 }
@@ -200,6 +187,9 @@ h1 {
 .game-overlay.is-result {
   place-items: center;
   background: rgba(14, 12, 19, 0.28);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .game-overlay.is-result .overlay-card {
@@ -241,21 +231,6 @@ h1 {
   background: #ffe477;
 }
 
-.game-footer {
-  display: grid;
-  grid-template-columns: 1fr;
-  min-height: 49px;
-  padding: 7px 3px 0;
-  color: var(--muted);
-  font-size: clamp(0.58rem, 2.5vw, 0.74rem);
-  line-height: 1.25;
-  text-align: center;
-}
-
-.game-footer p {
-  margin: 0;
-}
-
 .sr-only {
   position: absolute !important;
   width: 1px !important;
@@ -278,8 +253,7 @@ noscript {
 }
 
 @media (max-width: 620px) {
-  .button-label,
-  .desktop-only {
+  .button-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -295,24 +269,16 @@ noscript {
 
 @media (min-width: 700px) {
   .game-card {
-    width: min(600px, calc(62.5svh - 95px));
+    width: min(600px, calc(62.5svh - 50px));
   }
 
   .game-header {
     padding-bottom: 10px;
   }
 
-  .game-footer {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 5px 16px;
-    padding-top: 10px;
-  }
-
   @supports (height: 100dvh) {
     .game-card {
-      width: min(600px, calc(62.5dvh - 95px));
+      width: min(600px, calc(62.5dvh - 50px));
     }
   }
 }
@@ -336,13 +302,7 @@ noscript {
     padding-bottom: 4px;
   }
 
-  .eyebrow,
-  .game-footer {
-    display: none;
-  }
-
-  .button-label,
-  .desktop-only {
+  .button-label {
     position: absolute;
     width: 1px;
     height: 1px;

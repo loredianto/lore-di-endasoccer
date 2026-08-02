@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#171421" />
     <meta
       name="description"
-      content="Enda Soccer, a small free browser juggling game."
+      content="You Are the Soccer Ball, a small browser juggling game."
     />
-    <title>Enda Soccer</title>
+    <title>You Are the Soccer Ball</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="cursor.css" />
   </head>
@@ -16,10 +16,7 @@
     <main class="page-shell">
       <section class="game-card" aria-labelledby="game-title">
         <header class="game-header">
-          <div>
-            <p class="eyebrow">Browser game</p>
-            <h1 id="game-title">Enda Soccer</h1>
-          </div>
+          <h1 id="game-title">You Are the Soccer Ball</h1>
 
           <div class="toolbar" aria-label="Game controls">
             <button id="restart-button" class="icon-button" type="button" title="Restart">
@@ -44,26 +41,20 @@
             id="game-canvas"
             width="960"
             height="600"
-            aria-label="Game area. Press when the ball crosses the timing zone."
+            aria-label="Game area. Kick the stationary ball upward, then time each descending kick."
           ></canvas>
 
           <div id="game-overlay" class="game-overlay" aria-hidden="false">
             <div class="overlay-card">
               <p id="overlay-kicker" class="overlay-kicker">Goal: 100</p>
               <h2 id="overlay-title">Keep the ball in the air</h2>
-              <p id="overlay-copy">Press to start, then press when the ball enters the zone.</p>
+              <p id="overlay-copy">Kick the stationary ball upward, then time each descending kick.</p>
               <button id="overlay-action" class="primary-button" type="button" hidden>
                 Try again
               </button>
             </div>
           </div>
         </div>
-
-        <footer class="game-footer">
-          <p><span class="desktop-only">Mouse:</span> left-click at the right time</p>
-          <p><span class="desktop-only">Mobile:</span> tap the screen at the right time</p>
-          <p id="difficulty-label">Difficulty: loading…</p>
-        </footer>
 
         <div class="sr-only" aria-live="polite" aria-atomic="true">
           <p id="score-announcement">Score 0.</p>

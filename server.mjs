@@ -49,5 +49,5 @@ createServer(async (request, response) => {
     sendText(response, 404, "File not found");
   }
 }).listen(port, "127.0.0.1", () => {
-  console.log(`Enda Soccer: http://127.0.0.1:${port}`);
+  console.log(`You Are the Soccer Ball: http://127.0.0.1:${port}`);
 });

@@ -1,4 +1,4 @@
-# Enda Soccer
+# You Are the Soccer Ball
 
 A small, mobile-first browser juggling game with no dependencies. It is built
 with HTML, CSS, and vanilla JavaScript and rendered on a Canvas, so it requires
@@ -33,22 +33,34 @@ npx serve .
 
 - PC: left-click anywhere in the game area.
 - Smartphone/tablet: tap anywhere in the game area.
-- The first input starts the fall; subsequent inputs are valid only while the
-  ball is crossing the timing zone.
+- The ball waits motionless near the player's foot. The first input kicks it
+  upward but does not increase the score.
+- The counter begins with the first correctly timed juggle after the opening
+  kick. Subsequent inputs are valid only while the descending ball crosses the
+  timing zone.
 - A valid input queues the juggle: the ball keeps descending to the fixed
   contact point and only then starts its next arc. Clicking earlier or later
   inside the timing window never changes the next arc's origin, height, or
   duration.
 - The ball always follows the same scripted vertical axis, and the pointer
   never changes its position or direction.
-- In the `HARD` profile, pressing at the wrong time immediately ends the game.
+- In both profiles, pressing at the wrong time drops the ball and ends the run
+  when it reaches the floor.
+- After game over, tap or left-click anywhere on the game overlay to reset and
+  perform the next opening kick immediately.
 - The game ends when the ball touches the ground.
 - The goal is reached at 100 juggles, but play continues in endless mode so you
   can improve your high score.
+- A silver pixel medal appears at `50` juggles and a gold medal at `100`; both
+  remain visible beside the score panel for the rest of the run.
 - The high score is stored only in the browser's `localStorage`.
-- Music starts on the seventh juggle with a fade-in. The first gesture primes
-  the audio to comply with browser autoplay policies; if playback is blocked,
-  the game tries again on the next gesture.
+- `TRY: xxx` counts every started run and is stored separately in the browser's
+  `localStorage`, so it persists after reloading or closing the page.
+- Music starts on the seventh juggle with a fade-in. The first gesture anywhere
+  on the page primes the audio to comply with browser autoplay policies. If
+  automatic debug play has already passed seven juggles, that same gesture
+  starts the pending music immediately without toggling the audio button.
+- A successful timed kick immediately plays `assets/audio/kick.mp3`.
 
 The Canvas uses Pointer Events to handle mouse and touch through one input
 system. Only the game area sets `touch-action: none`, preventing accidental
@@ -74,12 +86,12 @@ and `430` px with the browser bars both visible and hidden.
 All parameters affecting gameplay, the scripted trajectory, input rules, the
 target, and audio are collected in [`src/config.js`](src/config.js).
 
-The game includes two profiles:
+The game includes two normal profiles:
 
-- `HARD`: a faster cycle, a narrow timing window, downward-only input, and an
-  immediate game over when the player presses at the wrong time.
-- `ACCESSIBLE`: a slower cycle, a wider timing window, and no immediate penalty
-  for an early input.
+- `HARD`: a narrow timing window while the ball is descending.
+- `ACCESSIBLE`: the same trajectory with a slightly wider timing
+  window. In both modes, pressing outside the window drops the ball and ends
+  the run when it reaches the floor.
 
 Change a single line to select a profile:
 
@@ -87,13 +99,34 @@ Change a single line to select a profile:
 export const ACTIVE_DIFFICULTY = "ACCESSIBLE";
 ```
 
+For a fast test run, change `DEBUG_MODE` near the top of the same file:
+
+```js
+export const DEBUG_MODE = true;
+```
+
+`DEBUG_MODE` is not a separate difficulty profile. It starts automatically and
+reuses the profile selected by `ACTIVE_DIFFICULTY` without changing its
+trajectory, timing window, cooldown or failure rules. Its only difference is
+supplying the kick input automatically when that profile's real timing window
+is valid. It still awards the normal `1` point per juggle and continues beyond
+`100`, so milestones and endless mode can be observed without clicking. Set it
+back to `false` to restore manual input.
+When debug mode is active, the Canvas displays an `AUTO DEBUG` flag in the
+lower-right corner. Set `layout.debugFlag.visible` to `false` to hide only this
+flag without disabling automatic play.
+
 The `trajectory` section controls the fixed apex (`apexY`), contact point
-(`contactY`), complete-cycle duration (`cycleDurationMs`), curve shape, and ball
-rotation per cycle. Both included profiles currently use a `1000 ms` cycle.
+(`contactY`) and complete-cycle duration (`cycleDurationMs`). The vertical path
+is calculated from constant gravity and launch velocity, the ball keeps a fixed
+orientation, and both profiles use a `640 ms` cycle with a `235 px` vertical
+rise.
+Set `layout.timingZone.visible` to `true` to display the exact timing area while
+testing; it is disabled by default, leaving only the underlined `Kick ↓` prompt.
 Other configurable values include timing-window size,
 cooldown, penalties for incorrect input, target score, the juggle that starts
 the music, fade-in duration, volume, and reset behavior. World, ground,
-character, HUD, timing-guide, and victory-banner coordinates are also
+character, HUD, kick-prompt, and victory-banner coordinates are also
 centralized in `world`, `game`, and `layout`, so you do not need to edit the game
 loop to realign them.
 
@@ -124,7 +157,8 @@ endasoccer/
 ├── server.mjs
 ├── assets/
 │   ├── audio/
-│   │   └── Endacopia OST - Soccer Ball [Extended Version].mp3
+│   │   ├── Endacopia OST - Soccer Ball [Extended Version].mp3
+│   │   └── kick.mp3
 │   ├── images/
 │   │   └── Immagine 2026-08-01 224033.png
 │   └── sprites/
@@ -136,11 +170,11 @@ endasoccer/
 
 ## Music, assets, and tribute notice
 
-The file `assets/audio/Endacopia OST - Soccer Ball [Extended Version].mp3` was
-supplied by the user and is only referenced by the code. **Do not publish or
-redistribute it without explicit permission from the copyright owner or a
-license that allows it.** Before distributing the game, replace it with
-original or licensed music, or obtain the necessary authorization.
+The files in `assets/audio/` were supplied by the user and are only referenced
+by the code. **Do not publish or redistribute them without explicit permission
+from their copyright owners or licenses that allow it.** Before distributing
+the game, replace them with original or licensed audio, or obtain the necessary
+authorization.
 
 Likewise, use only original or properly licensed sprites, names, and interface
 elements. A mechanic inspired by another work may be described as an unofficial
