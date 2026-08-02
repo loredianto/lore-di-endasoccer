@@ -127,6 +127,8 @@ const SHARED = {
     resetTrackOnRestart: true,
     retryOnNextGesture: true,
     mutedByDefault: false,
+    useWebAudioVolumeFallback: true,
+    audioContextLatencyHint: "playback",
   },
 
   assets: {

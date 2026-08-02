@@ -46,6 +46,7 @@ class YouAreTheSoccerBallGame {
     this.audioUnlocked = false;
     this.musicStarted = false;
     this.musicPending = false;
+    this.musicStartInFlight = false;
     this.audioPlayAttempt = 0;
     this.musicFadeFrame = null;
     this.kickPromptFadeStartedAt = null;
@@ -68,6 +69,8 @@ class YouAreTheSoccerBallGame {
     this.kickSound.volume = CONFIG.audio.kickSoundVolume;
     this.kickSound.preload = CONFIG.audio.preload;
     this.kickSound.muted = this.muted;
+    this.needsWebAudioVolumeFallback =
+      CONFIG.audio.useWebAudioVolumeFallback && !this.supportsNativeVolumeControl();
 
     this.frame = this.frame.bind(this);
     this.handlePointerDown = this.handlePointerDown.bind(this);
@@ -1045,6 +1048,22 @@ class YouAreTheSoccerBallGame {
     }
   }
 
+  supportsNativeVolumeControl() {
+    const isIOSLike =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    if (isIOSLike) return false;
+
+    try {
+      const probe = document.createElement("audio");
+      probe.volume = 0.5;
+      return Math.abs(probe.volume - 0.5) < 0.01;
+    } catch {
+      return false;
+    }
+  }
+
   primeAudio() {
     if (!this.audioUnlocked) {
       this.audioUnlocked = true;
@@ -1052,7 +1071,7 @@ class YouAreTheSoccerBallGame {
       this.kickSound.load();
     }
 
-    this.ensureAudioGraph();
+    if (this.needsWebAudioVolumeFallback) this.ensureAudioGraph();
 
     if (this.audioContext?.state === "suspended" || this.audioContext?.state === "interrupted") {
       this.audioContext.resume().catch(() => {});
@@ -1060,12 +1079,15 @@ class YouAreTheSoccerBallGame {
   }
 
   ensureAudioGraph() {
+    if (!this.needsWebAudioVolumeFallback) return false;
     if (this.musicGainNode && this.kickGainNode) return true;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return false;
 
     try {
-      this.audioContext = this.audioContext || new AudioContextClass();
+      this.audioContext =
+        this.audioContext ||
+        new AudioContextClass({ latencyHint: CONFIG.audio.audioContextLatencyHint });
 
       if (!this.musicGainNode) {
         const musicGainNode = this.audioContext.createGain();
@@ -1133,14 +1155,18 @@ class YouAreTheSoccerBallGame {
       return;
     }
 
+    if (this.musicStartInFlight) return;
+
     this.cancelMusicFade();
     this.setMusicOutputVolume(0);
     this.music.muted = this.muted;
     const attemptId = ++this.audioPlayAttempt;
+    this.musicStartInFlight = true;
     let playAttempt;
     try {
       playAttempt = this.music.play();
     } catch {
+      this.musicStartInFlight = false;
       this.musicStarted = false;
       this.musicPending = CONFIG.audio.retryOnNextGesture;
       return;
@@ -1150,6 +1176,7 @@ class YouAreTheSoccerBallGame {
       playAttempt
         .then(() => {
           if (attemptId !== this.audioPlayAttempt) return;
+          this.musicStartInFlight = false;
           this.musicStarted = true;
           this.musicPending = false;
           this.startKickPromptFade();
@@ -1157,10 +1184,12 @@ class YouAreTheSoccerBallGame {
         })
         .catch(() => {
           if (attemptId !== this.audioPlayAttempt) return;
+          this.musicStartInFlight = false;
           this.musicStarted = false;
           this.musicPending = CONFIG.audio.retryOnNextGesture;
         });
     } else {
+      this.musicStartInFlight = false;
       this.musicStarted = true;
       this.musicPending = false;
       this.startKickPromptFade();
@@ -1258,6 +1287,7 @@ class YouAreTheSoccerBallGame {
     }
     this.musicStarted = false;
     this.musicPending = false;
+    this.musicStartInFlight = false;
   }
 
   handleVisibilityChange() {
@@ -1286,6 +1316,7 @@ class YouAreTheSoccerBallGame {
       this.score >= CONFIG.audio.musicStartScore &&
       this.state !== STATES.GAME_OVER;
     this.audioPlayAttempt += 1;
+    this.musicStartInFlight = false;
 
     if (!this.music.paused) this.music.pause();
     if (this.audioContext?.state === "running") {
@@ -1312,22 +1343,30 @@ class YouAreTheSoccerBallGame {
     if (!shouldResumeMusic) return;
 
     const attemptId = ++this.audioPlayAttempt;
+    this.musicStartInFlight = true;
     try {
       const playAttempt = this.music.play();
       if (playAttempt && typeof playAttempt.then === "function") {
         playAttempt
           .then(() => {
             if (attemptId !== this.audioPlayAttempt) return;
+            this.musicStartInFlight = false;
             this.musicStarted = true;
             this.musicPending = false;
           })
           .catch(() => {
             if (attemptId !== this.audioPlayAttempt) return;
+            this.musicStartInFlight = false;
             this.musicPending = CONFIG.audio.retryOnNextGesture;
           });
+      } else {
+        this.musicStartInFlight = false;
+        this.musicStarted = true;
+        this.musicPending = false;
       }
     } catch {
       if (attemptId === this.audioPlayAttempt) {
+        this.musicStartInFlight = false;
         this.musicPending = CONFIG.audio.retryOnNextGesture;
       }
     }

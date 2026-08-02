@@ -59,7 +59,9 @@ npx serve .
 - Music starts on the seventh juggle with a fade-in. The first gesture anywhere
   on the page primes the audio to comply with browser autoplay policies. If
   automatic debug play has already passed seven juggles, that same gesture
-  starts the pending music immediately without toggling the audio button.
+  starts the pending music immediately without toggling the audio button. The
+  browser's native audio path is used on desktop and Android; Web Audio is used
+  only as a volume/fade fallback on iPhone and iPad.
 - A successful timed kick immediately plays `assets/audio/kick.mp3`.
 
 The Canvas uses Pointer Events to handle mouse and touch through one input
