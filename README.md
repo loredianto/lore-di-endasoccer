@@ -60,8 +60,9 @@ npx serve .
   on the page primes the audio to comply with browser autoplay policies. If
   automatic debug play has already passed seven juggles, that same gesture
   starts the pending music immediately without toggling the audio button. The
-  browser's native audio path is used on desktop and Android; Web Audio is used
-  only as a volume/fade fallback on iPhone and iPad.
+  browser's native audio path is used on every platform, including iPhone,
+  iPad, and Android. The optional Web Audio volume fallback remains disabled in
+  `src/config.js`.
 - A successful timed kick immediately plays `assets/audio/kick.mp3`.
 
 The Canvas uses Pointer Events to handle mouse and touch through one input
@@ -131,6 +132,11 @@ the music, fade-in duration, volume, and reset behavior. World, ground,
 character, HUD, kick-prompt, and victory-banner coordinates are also
 centralized in `world`, `game`, and `layout`, so you do not need to edit the game
 loop to realign them.
+
+At juggle `26`, a CSS spotlight activates: the regions outside a trapezoidal
+beam become darker while every pixel inside it keeps its original color and
+brightness. Change `layout.spotlight.unlockScore` or set
+`layout.spotlight.enabled` to `false` in `src/config.js` to adjust or disable it.
 
 ## Graphics assets
 

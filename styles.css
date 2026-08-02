@@ -159,8 +159,43 @@ h1 {
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+ * The spotlight is a transparent trapezoid rather than a bright overlay.
+ * Only the two areas outside it are darkened, so every Canvas pixel inside the
+ * beam keeps its original color and brightness.
+ */
+.spotlight-shade {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 900ms ease-in;
+}
+
+.spotlight-shade::before,
+.spotlight-shade::after {
+  position: absolute;
+  inset: 0;
+  background: rgba(1, 2, 8, 0.58);
+  content: "";
+}
+
+.spotlight-shade::before {
+  clip-path: polygon(0 0, 39.5% 0, 13% 100%, 0 100%);
+}
+
+.spotlight-shade::after {
+  clip-path: polygon(60.5% 0, 100% 0, 100% 100%, 87% 100%);
+}
+
+.game-stage.is-spotlight-active .spotlight-shade {
+  opacity: 1;
+}
+
 .game-overlay {
   position: absolute;
+  z-index: 2;
   inset: 0;
   display: grid;
   padding: clamp(8px, 3vw, 16px);

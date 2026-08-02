@@ -7,7 +7,7 @@
  */
 
 export const ACTIVE_DIFFICULTY = "ACCESSIBLE"; // "HARD" or "ACCESSIBLE"
-export const DEBUG_MODE = true; // true or false
+export const DEBUG_MODE = false; // true or false
 
 const SHARED = {
   world: {
@@ -38,6 +38,10 @@ const SHARED = {
 
   layout: {
     backgroundShadeOpacity: 0.44,
+    spotlight: {
+      enabled: true,
+      unlockScore: 26,
+    },
     kickPrompt: {
       leftX: 4,
       fontSize: 32,
@@ -127,7 +131,7 @@ const SHARED = {
     resetTrackOnRestart: true,
     retryOnNextGesture: true,
     mutedByDefault: false,
-    useWebAudioVolumeFallback: true,
+    useWebAudioVolumeFallback: false,
     audioContextLatencyHint: "playback",
   },
 

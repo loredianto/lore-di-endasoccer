@@ -180,6 +180,7 @@ class YouAreTheSoccerBallGame {
     this.stopMusic(CONFIG.audio.resetTrackOnRestart);
     this.state = STATES.READY;
     this.score = 0;
+    this.updateSpotlight();
     this.ball = this.createBall();
     this.trajectoryProgress = 0;
     this.kickQueued = false;
@@ -331,6 +332,7 @@ class YouAreTheSoccerBallGame {
     this.kickPoseUntil = now + CONFIG.game.kickPoseDurationMs;
     const previousScore = this.score;
     this.score += 1;
+    this.updateSpotlight();
 
     const unlockedMedals = CONFIG.layout.medals.items.filter(
       (medal) => previousScore < medal.score && this.score >= medal.score,
@@ -361,6 +363,14 @@ class YouAreTheSoccerBallGame {
     if (this.score >= CONFIG.audio.musicStartScore) {
       this.tryStartMusic();
     }
+  }
+
+  updateSpotlight() {
+    const { enabled, unlockScore } = CONFIG.layout.spotlight;
+    this.stage.classList.toggle(
+      "is-spotlight-active",
+      enabled && this.score >= unlockScore,
+    );
   }
 
   update(dt) {
